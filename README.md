@@ -482,11 +482,11 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - [Axum](https://github.com/tokio-rs/axum) for the web framework
 - [portable-pty](https://github.com/wez/portable-pty) for PTY handling
 
-## 📞 Support
+## 📞 Issues
 
 For bugs and feature requests, please [open an issue](https://github.com/witchcraftery/bridge-for-warp/issues).
 
-For security vulnerabilities, please email security@witchcraftery.io instead of using the issue tracker.
+For security vulnerabilities, please email nick@witchcraftery.io instead of using the issue tracker.
 
 ---
 
