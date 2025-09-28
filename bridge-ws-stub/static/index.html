@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Bridge</title>
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/xterm/css/xterm.css"
+    />
+    <style>
+      :root {
+        --bg: #0f1115;
+        --fg: #e6e8eb;
+        --muted: #9aa4b2;
+        --divider: #1b1f2a;
+        --accent: #6495ed;
+        --err: #d04f4f;
+        --safe: env(safe-area-inset-bottom, 0px);
+      }
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        background: var(--bg);
+        color: var(--fg);
+      }
+      body {
+        display: grid;
+        grid-template-rows: auto 1fr auto auto;
+      }
+
+      /* Tabs */
+      #tabs {
+        display: flex;
+        gap: 8px;
+        border-bottom: 1px solid var(--divider);
+        padding: 8px 10px;
+        background: #10131a;
+      }
+      .tab {
+        padding: 6px 10px;
+        border: 1px solid var(--divider);
+        border-radius: 8px;
+        background: #0f1115;
+        cursor: pointer;
+      }
+      .tab.active {
+        border-color: var(--accent);
+      }
+
+      /* Views */
+      #views {
+        position: relative;
+        height: 100%;
+      }
+      .view {
+        position: absolute;
+        inset: 0;
+        overflow: auto;
+        display: none;
+      }
+      .view.active {
+        display: block;
+      }
+
+      /* Timeline (Agent) */
+      #timeline {
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-end;
+        height: 100%;
+        padding: 8px;
+        gap: 8px;
+      }
+      .card {
+        background: #0f1115;
+        border: 1px solid var(--divider);
+        border-radius: 10px;
+        padding: 8px;
+        box-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
+      }
+      .hdr {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      .cwd {
+        opacity: 0.8;
+        border: 1px solid var(--divider);
+        border-radius: 6px;
+        padding: 2px 6px;
+        font: 12px SF Mono, JetBrains Mono, Menlo, Consolas, monospace;
+      }
+      .cmd {
+        font: 13px SF Mono, JetBrains Mono, Menlo, Consolas, monospace;
+        opacity: 0.95;
+      }
+      .chip {
+        margin-left: auto;
+        font-size: 12px;
+        opacity: 0.7;
+      }
+      .chip.err {
+        color: #ff9595;
+      }
+      pre.body {
+        margin: 6px 0 0 0;
+        white-space: pre-wrap;
+        font: 13px SF Mono, JetBrains Mono, Menlo, Consolas, monospace;
+        max-height: 18em; /* collapsed cap */
+        overflow: hidden;
+        position: relative;
+      }
+      .card.expanded pre.body {
+        /* when expanded: no cap */
+        max-height: none;
+      }
+      .card.expanded .fade {
+        /* hide the gradient when expanded */
+        display: none;
+      }
+      .fade {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 3em;
+        background: linear-gradient(
+          to bottom,
+          rgba(15, 17, 21, 0),
+          rgba(15, 17, 21, 1)
+        );
+      }
+      .actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 6px;
+      }
+
+      /* Terminal (Live) */
+      #term {
+        padding: 8px;
+        height: 100%;
+      }
+      #liveWrap {
+        height: 100%;
+      }
+
+      /* Composer + toolbar */
+      #composer {
+        border-top: 1px solid var(--divider);
+        background: #10131a;
+        padding: 8px 8px calc(8px + var(--safe)) 8px;
+        display: flex;
+        gap: 8px;
+        align-items: flex-end;
+      }
+      #cmdline {
+        flex: 1;
+        min-height: 36px;
+        max-height: 120px;
+        background: #0f1115;
+        color: var(--fg);
+        border: 1px solid var(--divider);
+        border-radius: 8px;
+        padding: 8px 10px;
+        resize: none;
+        outline: none;
+        font: 14px/1.2 SF Mono, JetBrains Mono, Menlo, Consolas, monospace;
+      }
+      #send {
+        background: #1b1f2a;
+        color: var(--fg);
+        border: 1px solid #1b1f2a;
+        padding: 8px 12px;
+        border-radius: 8px;
+      }
+      #toolbar {
+        border-top: 1px solid var(--divider);
+        background: #10131a;
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        padding: 8px 10px calc(8px + var(--safe)) 10px;
+      }
+      button.k {
+        background: #1b1f2a;
+        color: var(--fg);
+        border: 1px solid #1b1f2a;
+        padding: 6px 10px;
+        border-radius: 8px;
+      }
+      button.k:active {
+        border-color: var(--accent);
+      }
+      #status {
+        margin-left: auto;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      #kb {
+        position: absolute;
+        opacity: 0;
+        left: -9999px;
+        height: 0;
+        width: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Tabs -->
+    <div id="tabs">
+      <div class="tab active" data-tab="agent">Agent</div>
+      <div class="tab" data-tab="live">Live Terminal</div>
+    </div>
+
+    <!-- Views -->
+    <div id="views">
+      <div id="agentView" class="view active">
+        <div id="timeline"></div>
+      </div>
+      <div id="liveView" class="view">
+        <div id="liveWrap"><div id="term"></div></div>
+      </div>
+    </div>
+
+    <!-- Composer (Ask Agent / Run Command) -->
+    <div id="composer">
+      <textarea
+        id="cmdline"
+        rows="1"
+        placeholder="Type a command… (Enter to send, Shift+Enter for newline)"
+        autocapitalize="off"
+        autocomplete="off"
+        autocorrect="off"
+        spellcheck="false"
+      ></textarea>
+      <button id="send">Send</button>
+    </div>
+
+    <!-- Toolbar -->
+    <div id="toolbar">
+      <button class="k" id="esc">Esc</button
+      ><button class="k" id="ctrlc">Ctrl-C</button
+      ><button class="k" id="tab">Tab</button>
+      <button class="k" id="left">←</button><button class="k" id="up">↑</button
+      ><button class="k" id="down">↓</button
+      ><button class="k" id="right">→</button>
+      <button class="k" id="fontminus">A−</button
+      ><button class="k" id="fontplus">A+</button>
+      <button class="k" id="showkb">Keyboard</button>
+      <button class="k" id="mode">Live typing: OFF</button>
+      <div id="status">disconnected</div>
+    </div>
+
+    <input id="kb" type="text" />
+
+    <script src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit/lib/xterm-addon-fit.min.js"></script>
+    <script>
+      // --- Helpers -----------------------------------------------------------
+      function stripAnsiOsc(s) {
+        s = s.replace(/\u001B\][^\u0007\u001B]*(?:\u0007|\u001B\\)/g, ""); // OSC
+        s = s.replace(/\u001B\[[0-?]*[ -/]*[@-~]/g, ""); // CSI
+        s = s.replace(/\u001B[@-Z\\-_]/g, ""); // 1B ESC
+        s = s.replace(/\r/g, ""); // CR -> LF
+        return s;
+      }
+
+      // --- Tabs --------------------------------------------------------------
+      const tabs = document.querySelectorAll(".tab");
+      const views = {
+        agent: document.getElementById("agentView"),
+        live: document.getElementById("liveView"),
+      };
+      function setTab(name) {
+        tabs.forEach((t) =>
+          t.classList.toggle("active", t.dataset.tab === name)
+        );
+        Object.entries(views).forEach(([k, v]) =>
+          v.classList.toggle("active", k === name)
+        );
+      }
+      tabs.forEach((t) => (t.onclick = () => setTab(t.dataset.tab)));
+
+      // --- Terminal (Live) ---------------------------------------------------
+      const term = new Terminal({
+        convertEol: true,
+        fontFamily: "SF Mono, JetBrains Mono, Menlo, Consolas, monospace",
+        fontSize: parseInt(localStorage.getItem("bridge_font") || "15", 10),
+        theme: { background: "#0f1115", foreground: "#e6e8eb" },
+        cursorBlink: true,
+        disableStdin: true,
+      });
+      const fit = new FitAddon.FitAddon();
+      term.loadAddon(fit);
+      term.open(document.getElementById("term"));
+      function refit() {
+        try {
+          fit.fit();
+          sendResize();
+        } catch {}
+      }
+      addEventListener("resize", refit);
+      if (visualViewport) visualViewport.addEventListener("resize", refit);
+      setTimeout(refit, 0);
+
+      // --- Composer ----------------------------------------------------------
+      const cmd = document.getElementById("cmdline");
+      const sendBtn = document.getElementById("send");
+      function autogrow() {
+        cmd.style.height = "auto";
+        cmd.style.height = Math.min(120, cmd.scrollHeight) + "px";
+      }
+      cmd.addEventListener("input", autogrow);
+      autogrow();
+      function sendLine(text) {
+        if (!text.trim().length) return;
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(
+            new TextEncoder().encode(text.endsWith("\n") ? text : text + "\n")
+          );
+        }
+      }
+      cmd.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          sendLine(cmd.value);
+          cmd.value = "";
+          autogrow();
+          scrollTimelineToBottom();
+        }
+      });
+      sendBtn.onclick = () => {
+        sendLine(cmd.value);
+        cmd.value = "";
+        autogrow();
+        scrollTimelineToBottom();
+      };
+
+      // --- Toolbar helpers ---------------------------------------------------
+      const sendText = (t) =>
+        ws?.readyState === WebSocket.OPEN &&
+        ws.send(new TextEncoder().encode(t));
+      const sendCtrl = (c) =>
+        ws?.readyState === WebSocket.OPEN && ws.send(new Uint8Array([c]));
+      ["esc", "ctrlc", "tab", "left", "up", "down", "right"].forEach((id) => {
+        document.getElementById(id).onclick = () => {
+          if (id === "esc") sendCtrl(0x1b);
+          else if (id === "ctrlc") sendCtrl(0x03);
+          else if (id === "tab") sendCtrl(0x09);
+          else if (id === "left") sendText("\x1b[D");
+          else if (id === "up") sendText("\x1b[A");
+          else if (id === "down") sendText("\x1b[B");
+          else if (id === "right") sendText("\x1b[C");
+        };
+      });
+      const setFont = (n) => {
+        term.options.fontSize = n;
+        localStorage.setItem("bridge_font", String(n));
+        refit();
+      };
+      document.getElementById("fontminus").onclick = () =>
+        setFont(Math.max(10, term.options.fontSize - 1));
+      document.getElementById("fontplus").onclick = () =>
+        setFont(Math.min(22, term.options.fontSize + 1));
+      document.getElementById("showkb").onclick = () => {
+        const i = document.getElementById("kb");
+        i.value = "";
+        i.focus();
+        cmd.focus();
+      };
+
+      // --- Mode toggle (Live typing vs Composer) -----------------------------
+      let live = false;
+      const modeBtn = document.getElementById("mode");
+      let onDataSub = null;
+      function setMode(next) {
+        live = next;
+        term.options.disableStdin = !live;
+        document.getElementById("composer").style.display = live
+          ? "none"
+          : "flex";
+        modeBtn.textContent = `Live typing: ${live ? "ON" : "OFF"}`;
+        if (onDataSub) {
+          onDataSub.dispose?.();
+          onDataSub = null;
+        }
+        if (live) {
+          onDataSub = term.onData(
+            (d) =>
+              ws?.readyState === WebSocket.OPEN &&
+              ws.send(new TextEncoder().encode(d))
+          );
+          setTab("live");
+        } else {
+          setTab("agent");
+        }
+        refit();
+        term.focus();
+      }
+      modeBtn.onclick = () => setMode(!live);
+
+      // --- Timeline data / render -------------------------------------------
+      const TL = document.getElementById("timeline");
+      const blocks = new Map(); // id -> { meta, lines:[], tail:'', collapsed:true }
+      function scrollTimelineToBottom() {
+        TL.scrollTop = TL.scrollHeight;
+      }
+
+      function renderOrCreateCard(id) {
+        let el = document.querySelector(`[data-block="${id}"]`);
+        const b = blocks.get(id);
+        if (!b) return null;
+        if (!el) {
+          el = document.createElement("div");
+          el.className = "card";
+          el.dataset.block = id;
+          el.innerHTML = `
+            <div class="hdr">
+              <span class="cwd"></span><span style="opacity:.6">›</span>
+              <code class="cmd"></code>
+              <span class="chip">…</span>
+            </div>
+            <div class="wrap" style="position:relative">
+              <pre class="body"></pre><div class="fade"></div>
+            </div>
+            <div class="actions"><button class="k toggle">Expand</button><button class="k copy">Copy</button></div>`;
+          el.querySelector(".toggle").onclick = () => {
+            b.collapsed = !b.collapsed;
+            paintCard(el, b);
+          };
+          el.querySelector(".copy").onclick = () =>
+            navigator.clipboard.writeText((b.lines || []).join("\n"));
+          TL.appendChild(el);
+        }
+        paintCard(el, b);
+        return el;
+      }
+
+      const COLLAPSE_AT = 12;
+      function paintCard(el, b) {
+        // Header bits
+        el.querySelector(".cwd").className = "cwd";
+        el.querySelector(".cwd").textContent = b.meta?.cwd || "";
+        el.querySelector(".cmd").textContent = b.meta?.cmd || "";
+        const chip = el.querySelector(".chip");
+        if (b.meta?.exit == null) {
+          chip.textContent = "running";
+          chip.className = "chip";
+        } else if (b.meta.exit === 0) {
+          chip.textContent = "exit 0";
+          chip.className = "chip";
+        } else {
+          chip.textContent = `exit ${b.meta.exit}`;
+          chip.className = "chip err";
+        }
+
+        // Body + expansion logic
+        const body = el.querySelector(".body");
+        const fade = el.querySelector(".fade");
+        const toggle = el.querySelector(".toggle");
+        const lines = b.lines || [];
+        const collapsed = b.collapsed && lines.length > COLLAPSE_AT;
+        el.classList.toggle("expanded", !collapsed); // key line to remove height cap
+
+        if (collapsed) {
+          body.textContent =
+            lines.slice(0, COLLAPSE_AT).join("\n") +
+            (lines.length > COLLAPSE_AT
+              ? `\n… (${lines.length - COLLAPSE_AT} more)`
+              : "");
+          fade.style.display = "block";
+          toggle.textContent = "Expand";
+        } else {
+          body.textContent = lines.join("\n");
+          fade.style.display = "none";
+          toggle.textContent = "Collapse";
+        }
+        scrollTimelineToBottom();
+      }
+
+      // --- WebSocket transport ----------------------------------------------
+      let ws;
+      let suspendTimeline = false; // ignore block_chunk while Live (alt-screen) is active
+      function setStatus(s) {
+        document.getElementById("status").textContent = s;
+      }
+      function connect() {
+        const proto = location.protocol === "https:" ? "wss" : "ws";
+        const url = `${proto}://${location.host}/bridge`;
+        setStatus("connecting");
+        ws = new WebSocket(url);
+        ws.binaryType = "arraybuffer";
+        ws.onopen = () => {
+          setStatus("connected");
+          refit();
+          term.focus();
+        };
+        ws.onmessage = (ev) => {
+          if (ev.data instanceof ArrayBuffer) {
+            const bytes = new Uint8Array(ev.data);
+            term.write(new TextDecoder().decode(bytes));
+            term.scrollToBottom();
+          } else {
+            try {
+              const m = JSON.parse(ev.data);
+              if (m.type === "block_event") {
+                if (m.event === "opened") {
+                  blocks.set(m.block.id, {
+                    meta: m.block,
+                    lines: [],
+                    tail_raw: "",
+                    collapsed: true,
+                  });
+                  renderOrCreateCard(m.block.id);
+                } else if (m.event === "closed") {
+                  const b = blocks.get(m.block.id);
+                  if (b) {
+                    // Flush any leftover partial line (sanitize now)
+                    if (b.tail_raw && b.tail_raw.trim().length) {
+                      const cleanTail = stripAnsiOsc(b.tail_raw);
+                      if (cleanTail.trim().length) b.lines.push(cleanTail);
+                    }
+                    b.tail_raw = "";
+                    // Drop a trailing prompt-only line
+                    while (
+                      b.lines.length &&
+                      /^[%#$]\s*$/.test(b.lines[b.lines.length - 1])
+                    )
+                      b.lines.pop();
+                    b.meta = { ...b.meta, ...m.block };
+                    renderOrCreateCard(m.block.id);
+                  }
+                }
+              } else if (m.type === "block_chunk") {
+                if (suspendTimeline) return; // don't pollute cards during TUIs
+                const b = blocks.get(m.id);
+                if (b) {
+                  // Merge RAW bytes first, then sanitize complete lines
+                  const merged = (b.tail_raw || "") + m.text;
+                  const parts = merged.split("\n");
+                  b.tail_raw = parts.pop(); // keep partial raw tail
+                  for (const rawLine of parts) {
+                    const clean = stripAnsiOsc(rawLine);
+                    if (clean.length) b.lines.push(clean);
+                  }
+                  renderOrCreateCard(m.id);
+                }
+              } else if (m.type === "alt_screen") {
+                if (m.on) {
+                  suspendTimeline = true;
+                  setMode(true);
+                } // enter Live
+                else {
+                  suspendTimeline = false;
+                  setMode(false);
+                } // return to Agent
+              }
+            } catch {
+              // Non-JSON payload: ignore in timeline
+            }
+          }
+        };
+        ws.onclose = () => setStatus("disconnected");
+      }
+      connect();
+
+      // PTY resize
+      function sendResize() {
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        ws.send(
+          JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows })
+        );
+      }
+    </script>
+  </body>
+</html>

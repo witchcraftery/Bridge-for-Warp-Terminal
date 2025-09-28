@@ -1,0 +1,122 @@
+# Rust build artifacts
+/target/
+**/target/
+**/*.rs.bk
+*.pdb
+
+# Cargo lock file (uncomment if this is a library project)
+# Cargo.lock
+
+# Environment variables and secrets
+.env
+.env.*
+*.env
+!.env.example
+
+# System files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# IDE and editor directories
+.vscode/
+.idea/
+*.iml
+*.sublime-project
+*.sublime-workspace
+.project
+.classpath
+.settings/
+*.code-workspace
+
+# Logs and debugging
+*.log
+*.log.*
+logs/
+debug/
+*.pid
+*.seed
+*.pid.lock
+
+# Temporary files
+*.tmp
+*.temp
+tmp/
+temp/
+.cache/
+*.bak
+*.backup
+
+# Testing
+*.test
+*.spec
+coverage/
+.nyc_output/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# macOS specific
+.AppleDouble
+.LSOverride
+Icon
+.apdisk
+
+# Windows specific
+desktop.ini
+$RECYCLE.BIN/
+
+# Linux specific
+.directory
+.Trash-*
+
+# Security and credentials
+*.key
+*.pem
+*.cer
+*.crt
+*.p12
+secrets/
+credentials/
+
+# Documentation build output
+docs/_build/
+site/
+
+# Binary executables (but track Cargo.toml)
+bridge-ws-stub/bridge-ws-stub
+!/Cargo.toml
+!/bridge-ws-stub/Cargo.toml
+
+# Python virtual environments (if any Python scripts are added)
+venv/
+.venv/
+env/
+.env/
+
+# Node modules (if any JS/TS development is added)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Archives
+*.tar
+*.tar.gz
+*.zip
+*.rar
+*.7z
+
+# Custom ignore patterns for Bridge project
+/bridge-ws-stub/target/
+*.sock
+/tmp/bridge-*.sock
