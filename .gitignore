@@ -120,3 +120,15 @@ yarn-error.log*
 /bridge-ws-stub/target/
 *.sock
 /tmp/bridge-*.sock
+bridge.log
+bridge-ws-stub/bridge.log
+
+# Authentication tokens and secrets (CRITICAL - DO NOT COMMIT)
+.env.local
+.env.production
+auth_token.txt
+token.txt
+**/BRIDGE_AUTH_TOKEN*
+
+# Runtime files
+nohup.out

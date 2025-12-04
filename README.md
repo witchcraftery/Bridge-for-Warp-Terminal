@@ -25,18 +25,33 @@ Bridge for Warp Terminal provides a seamless connection between your browser and
 
 ## ✨ Features
 
+### Core Functionality
 - **🌐 Browser-Based Access**: Access your Warp Terminal from any modern web browser
 - **🔌 Real-time WebSocket Connection**: Low-latency, bidirectional communication between browser and terminal
 - **🎨 Dual Interface Modes**:
-  - **Agent View**: Track command execution history with organized timeline cards
+  - **Agent View**: Track command execution history with organized timeline cards, flowing from bottom-up like Warp Terminal
   - **Live Terminal**: Full terminal emulator with xterm.js for interactive sessions
-- **📱 Responsive Design**: Optimized for desktop, tablet, and mobile devices
+- **📱 Responsive Design**: Optimized for desktop, tablet, and mobile devices with tested iPad support
 - **⌨️ Virtual Keyboard Support**: Touch-friendly controls for mobile devices
-- **🔄 Session Management**: Automatic session handling with PTY (pseudo-terminal) support
+
+### Security & Authentication (✨ NEW in v0.1.0)
+- **🔐 Token-Based Authentication**: Secure access with configurable authentication tokens
+- **📱 QR Code Authentication**: Scan QR code on mobile devices for instant, secure connection
+- **🔒 Session Management**: Automatic session tracking with UUID identifiers and configurable timeouts
+- **⏱️ Auto-Cleanup**: Background task removes expired sessions every 5 minutes
+- **🌐 VPN/Tailscale Ready**: Configure public URL for remote access over secure networks
+
+### User Experience
+- **🌉 Beautiful UI**: Ethereal portal-themed intro screen with ASCII art
+- **📂 Current Directory Indicator**: Sticky directory bar shows your location as you navigate
 - **🎯 Command Context Tracking**: Captures working directory, command, and exit status
+- **🔄 Smart Reconnection**: Exponential backoff retry logic for dropped connections
 - **🚀 Alt-Screen Detection**: Seamlessly switches between normal and alternate screen buffers (for vim, less, etc.)
+
+### Technical
 - **📦 Lightweight**: Minimal dependencies with efficient Rust backend
 - **🛡️ Secure by Design**: Unix domain sockets for inter-process communication
+- **✨ Built with ♥️**: Open source and ready for community contributions
 
 ## 🏗 Architecture
 
@@ -109,10 +124,23 @@ cargo build --release
 
 The compiled binary will be available at `target/release/bridge-ws-stub`.
 
-### 4. Quick Test
+### 4. Generate Authentication Token
 
 ```bash
+# Generate a secure random token
+openssl rand -hex 32
+```
+
+Save this token securely - you'll need it to connect!
+
+### 5. Quick Test
+
+```bash
+# Run without authentication (development only)
 cargo run
+
+# Run with authentication (recommended)
+BRIDGE_AUTH_TOKEN=your-token-here cargo run
 ```
 
 Navigate to `http://localhost:7777` in your browser to test the connection.
@@ -128,12 +156,20 @@ Create a `.env` file in the project root (see `.env.example` for reference):
 BRIDGE_HOST=0.0.0.0
 BRIDGE_PORT=7777
 
+# Public URL (for QR code and remote access)
+# Use this when accessing from mobile devices over VPN/Tailscale
+# Example: BRIDGE_PUBLIC_URL=http://100.80.167.116:7777
+BRIDGE_PUBLIC_URL=
+
+# Authentication (REQUIRED for production)
+# Generate with: openssl rand -hex 32
+BRIDGE_AUTH_TOKEN=your-secure-token-here
+
+# Session timeout in seconds (default: 1800 = 30 minutes)
+BRIDGE_SESSION_TIMEOUT=1800
+
 # Shell Configuration
 BRIDGE_SHELL=/bin/zsh  # or /bin/bash, /bin/fish
-
-# Security (for production)
-BRIDGE_AUTH_TOKEN=your-secure-token-here
-BRIDGE_ALLOWED_ORIGINS=https://your-domain.com
 
 # Logging
 RUST_LOG=info  # debug, info, warn, error
@@ -178,13 +214,25 @@ BRIDGE_PORT=8080 BRIDGE_SHELL=/bin/bash ./target/release/bridge-ws-stub
 
 ### Accessing the Interface
 
+#### Desktop Access
 1. Open your browser and navigate to:
    - Local: `http://localhost:7777`
    - Network: `http://your-ip:7777`
+   - Tailscale: `http://your-tailscale-ip:7777`
 
-2. The interface offers two modes:
-   - **Agent View**: See command history and outputs in timeline cards
+2. Enter your authentication token when prompted (if enabled)
+
+3. The interface offers two modes:
+   - **Agent View**: See command history and outputs in timeline cards flowing from bottom-up
    - **Live Terminal**: Direct terminal interaction
+
+#### Mobile/Tablet Access (QR Code)
+1. **On Desktop**: Click the "📱 QR Code" button in the tabs
+2. **On Mobile**: Open camera app and scan the QR code
+3. **Tap notification**: Browser opens and auto-connects with token
+4. **Start using**: Full terminal access on your mobile device!
+
+> **Note**: Both devices must be on the same network or VPN (e.g., Tailscale) for QR code flow to work.
 
 ### Using the Interface
 
@@ -275,21 +323,33 @@ websocket.onmessage = (event) => {
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/` | GET | Serve static web interface |
-| `/bridge` | WebSocket | WebSocket upgrade endpoint |
+| `/bridge` | WebSocket | WebSocket upgrade endpoint (requires `?token=...` if auth enabled) |
+| `/qr` | GET | Generate QR code for mobile authentication |
+| `/sessions` | GET | List active sessions (JSON) |
 
 ## 🔒 Security
 
-### ⚠️ Important Security Considerations
+### ✅ Current Security Features (v0.1.0)
 
-1. **Authentication**: Currently, Bridge does not implement authentication. For production use:
-   - Implement token-based authentication
-   - Use HTTPS/WSS for encrypted connections
-   - Add rate limiting to prevent abuse
+1. **Token-Based Authentication**:
+   - Set `BRIDGE_AUTH_TOKEN` environment variable
+   - Token required for all WebSocket connections
+   - QR code flow for secure mobile onboarding
+   - Tokens stored in sessionStorage (cleared on tab close)
+
+2. **Session Management**:
+   - Each connection gets unique session ID (UUID)
+   - Configurable session timeouts (default: 30 minutes)
+   - Automatic cleanup of expired sessions
+   - Session tracking via `/sessions` API endpoint
+
+### ⚠️ Important Security Considerations
 
 2. **Network Exposure**:
    - By default, the server binds to `0.0.0.0:7777` (all interfaces)
-   - For local-only access, bind to `127.0.0.1`
-   - Use a reverse proxy (nginx, Caddy) for production deployment
+   - For local-only access, set `BRIDGE_HOST=127.0.0.1`
+   - For remote access, use VPN (Tailscale, WireGuard) or reverse proxy
+   - Set `BRIDGE_PUBLIC_URL` for QR code generation with remote IPs
 
 3. **Command Execution**:
    - All commands are executed with the privileges of the user running Bridge
@@ -337,13 +397,17 @@ websocket.onmessage = (event) => {
 bridge-for-warp/
 ├── bridge-ws-stub/
 │   ├── src/
-│   │   └── main.rs          # Main server implementation
+│   │   ├── main.rs          # Main server implementation
+│   │   └── session.rs       # Session management module
 │   ├── static/
-│   │   └── index.html       # Web interface
+│   │   └── index.html       # Web interface (xterm.js + custom UI)
 │   ├── Cargo.toml           # Rust dependencies
 │   └── Cargo.lock           # Dependency lock file
-├── .gitignore               # Git ignore rules
+├── .gitignore               # Git ignore rules (includes auth tokens)
 ├── .env.example             # Example environment configuration
+├── WARP.md                  # Development guide for AI assistants
+├── PROGRESS.md              # Implementation tracking
+├── AUTH_QUICKSTART.md       # Authentication setup guide
 └── README.md                # This file
 ```
 
@@ -488,7 +552,39 @@ For bugs and feature requests, please [open an issue](https://github.com/witchcr
 
 For security vulnerabilities, please email nick@witchcraftery.io instead of using the issue tracker.
 
+## 🗺️ Roadmap
+
+### ✅ Phase 1.1 - Authentication & Mobile Support (v0.1.0) - COMPLETE
+- [x] Token-based authentication
+- [x] QR code generation for mobile
+- [x] Session management with auto-cleanup
+- [x] Tailscale/VPN support
+- [x] Beautiful UI with ASCII art intro
+- [x] Current directory indicator
+- [x] Bottom-up command flow
+
+### 🚧 Phase 1.2 - Enhanced Session Management (Planned)
+- [ ] IP whitelisting
+- [ ] Session management UI
+- [ ] Idle timeout warnings
+- [ ] Multi-user session isolation
+
+### 🔮 Phase 2 - Session Persistence (Future)
+- [ ] tmux integration for session recovery
+- [ ] Command history persistence
+- [ ] Resume sessions after disconnect
+- [ ] Session bookmarking
+
+### 🌟 Phase 3 - Advanced Features (Future)
+- [ ] File upload/download via drag-and-drop
+- [ ] Collaborative sessions
+- [ ] Command filtering and audit logs
+- [ ] OAuth2 authentication
+
 ---
 
-<p align="center">Made with ❤️ by developers, for developers</p>
-<p align="center">© 2024 Bridge for Warp Terminal. All rights reserved.</p>
+<p align="center">Bridge for Warp is not affiliated with Warp, Warp Terminal, or Warp.dev.</p>
+
+<p align="center">Built with help from Warp by <a href="https://github.com/witchcraftery">Witchcraftery</a></p>
+<p align="center">Made with ❤️ for all the devs that can't put it down.</p>
+<p align="center">MIT License.</p>

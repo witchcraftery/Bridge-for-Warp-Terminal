@@ -1,7 +1,13 @@
-use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
-use axum::{routing::get, Router};
+mod session;
+
+use axum::extract::{Query, ws::{Message, WebSocket, WebSocketUpgrade}};
+use axum::{routing::get, Router, response::{Html, IntoResponse}, http::StatusCode};
+use axum::extract::State;
 use futures::{SinkExt, StreamExt};
 use portable_pty::{native_pty_system, CommandBuilder, PtySize};
+use qrcode::QrCode;
+use qrcode::render::svg;
+use serde::Deserialize;
 use std::fs;
 use std::io::{Read, Write};
 use std::os::unix::net::UnixDatagram;
@@ -11,23 +17,242 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use tower_http::services::ServeDir;
 
+use session::SessionManager;
+
+#[derive(Deserialize)]
+struct AuthQuery {
+    token: Option<String>,
+}
+
+#[derive(Clone)]
+struct AppState {
+    auth_token: Option<String>,
+    session_manager: SessionManager,
+    host: String,
+    port: u16,
+    public_url: Option<String>,
+}
+
 #[tokio::main]
 async fn main() {
+    // Load configuration from environment
+    let auth_token = std::env::var("BRIDGE_AUTH_TOKEN").ok();
+    let timeout = std::env::var("BRIDGE_SESSION_TIMEOUT")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(1800); // 30 minutes default
+    let host = std::env::var("BRIDGE_HOST").unwrap_or("0.0.0.0".to_string());
+    let port: u16 = std::env::var("BRIDGE_PORT")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(7777);
+    let public_url = std::env::var("BRIDGE_PUBLIC_URL").ok();
+
+    let state = AppState {
+        auth_token: auth_token.clone(),
+        session_manager: SessionManager::new(timeout),
+        host: host.clone(),
+        port,
+        public_url: public_url.clone(),
+    };
+
+    // Spawn background task to cleanup expired sessions
+    let session_cleanup = state.session_manager.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(300)); // Every 5 min
+        loop {
+            interval.tick().await;
+            let removed = session_cleanup.cleanup_expired().await;
+            if removed > 0 {
+                eprintln!("Cleaned up {} expired sessions", removed);
+            }
+        }
+    });
+
     let app = Router::new()
         .route("/bridge", get(ws_handler))
-        .nest_service("/", ServeDir::new("static"));
+        .route("/qr", get(qr_handler))
+        .route("/sessions", get(sessions_handler))
+        .nest_service("/", ServeDir::new("static"))
+        .with_state(state.clone());
 
-    let addr = std::net::SocketAddr::from(([0, 0, 0, 0], 7777));
-    println!("Bridge listening at http://{}  (WS:/bridge, static: ./static)", addr);
+    let addr: std::net::SocketAddr = format!("{}:{}", host, port).parse().unwrap();
+    let default_url = format!("http://{}:{}", host, port);
+    let display_url = public_url.as_ref().map(|u| u.as_str()).unwrap_or(&default_url);
+    
+    if auth_token.is_some() {
+        println!("🔒 Bridge listening at {}  (Authentication ENABLED)", display_url);
+        println!("   📱 QR Code available at {}/qr", display_url);
+    } else {
+        println!("⚠️  Bridge listening at {}  (Authentication DISABLED - Set BRIDGE_AUTH_TOKEN to enable)", display_url);
+    }
+    println!("   Bind address: {}", addr);
+    println!("   Static files: ./static");
+    
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
 }
 
-async fn ws_handler(ws: WebSocketUpgrade) -> impl axum::response::IntoResponse {
-    ws.on_upgrade(handle_socket)
+async fn qr_handler(State(state): State<AppState>) -> impl IntoResponse {
+    // Generate QR code with connection URL + token
+    let token = match &state.auth_token {
+        Some(t) => t.clone(),
+        None => return (StatusCode::BAD_REQUEST, Html("<html><body><h1>Authentication not enabled</h1><p>Set BRIDGE_AUTH_TOKEN environment variable to enable QR code generation.</p></body></html>")).into_response(),
+    };
+
+    // Determine the connection URL - use public URL if set, otherwise construct from host:port
+    // Point to root (/) instead of /bridge so browser loads the HTML page first
+    let base_url = state.public_url.as_ref()
+        .map(|u| u.trim_end_matches('/').to_string())
+        .unwrap_or_else(|| format!("http://{}:{}", state.host, state.port));
+    
+    let connection_url = format!("{}/?token={}", base_url, token);
+    
+    // Generate QR code
+    let qr = match QrCode::new(connection_url.as_bytes()) {
+        Ok(qr) => qr,
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Html(format!("<html><body><h1>Error</h1><p>Failed to generate QR code: {}</p></body></html>", e))).into_response(),
+    };
+
+    let svg = qr.render::<svg::Color>()
+        .min_dimensions(400, 400)
+        .dark_color(svg::Color("#000000"))
+        .light_color(svg::Color("#ffffff"))
+        .build();
+
+    let html = format!(r#"
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Bridge - QR Code</title>
+    <style>
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #0f1115;
+            color: #e6e8eb;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+        }}
+        .container {{
+            text-align: center;
+            max-width: 600px;
+        }}
+        h1 {{
+            margin-bottom: 10px;
+        }}
+        p {{
+            color: #9aa4b2;
+            margin-bottom: 30px;
+        }}
+        .qr-wrapper {{
+            background: white;
+            padding: 30px;
+            border-radius: 16px;
+            display: inline-block;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }}
+        .connection-url {{
+            margin-top: 20px;
+            padding: 15px;
+            background: #1b1f2a;
+            border-radius: 8px;
+            word-break: break-all;
+            font-family: monospace;
+            font-size: 12px;
+        }}
+        .instructions {{
+            margin-top: 30px;
+            text-align: left;
+            background: #1b1f2a;
+            padding: 20px;
+            border-radius: 8px;
+        }}
+        .instructions h2 {{
+            margin-top: 0;
+            font-size: 18px;
+        }}
+        .instructions ol {{
+            padding-left: 20px;
+        }}
+        .instructions li {{
+            margin-bottom: 10px;
+            line-height: 1.6;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔗 Bridge Connection QR Code</h1>
+        <p>Scan this QR code with your mobile device to connect instantly</p>
+        <div class="qr-wrapper">
+            {}
+        </div>
+        <div class="connection-url">
+            <strong>Connection URL:</strong><br/>
+            {}
+        </div>
+        <div class="instructions">
+            <h2>📱 How to Connect</h2>
+            <ol>
+                <li>Open your mobile browser (Safari on iOS, Chrome on Android)</li>
+                <li>Scan this QR code using your camera app</li>
+                <li>Tap the notification to open the link</li>
+                <li>You'll be automatically connected to your terminal!</li>
+            </ol>
+            <p style="color: #9aa4b2; font-size: 14px;"><em>Note: Make sure both devices are on the same Tailscale network or VPN.</em></p>
+        </div>
+    </div>
+</body>
+</html>
+    "#, svg, connection_url);
+
+    Html(html).into_response()
 }
 
-async fn handle_socket(socket: WebSocket) {
+async fn sessions_handler(State(state): State<AppState>) -> impl IntoResponse {
+    let sessions = state.session_manager.list_sessions().await;
+    let response = serde_json::json!({
+        "active_sessions": sessions.len(),
+        "sessions": sessions,
+    });
+    axum::Json(response).into_response()
+}
+
+async fn ws_handler(
+    State(state): State<AppState>,
+    Query(auth): Query<AuthQuery>,
+    ws: WebSocketUpgrade,
+) -> impl axum::response::IntoResponse {
+    // Validate token if authentication is enabled
+    if let Some(expected_token) = &state.auth_token {
+        match &auth.token {
+            Some(provided_token) if provided_token == expected_token => {
+                // Token valid, proceed
+            }
+            _ => {
+                return (StatusCode::UNAUTHORIZED, "Invalid or missing token").into_response();
+            }
+        }
+    }
+
+    // Create session
+    let session_manager = state.session_manager.clone();
+    let session = session_manager.create_session(None, None).await;
+    let session_id = session.id.clone();
+    
+    eprintln!("[{}] New WebSocket connection", session_id);
+
+    ws.on_upgrade(move |socket| handle_socket(socket, session_manager, session_id))
+}
+
+async fn handle_socket(socket: WebSocket, session_manager: SessionManager, session_id: String) {
     // --- PTY setup -----------------------------------------------------------
     let pty_system = native_pty_system();
     let pair = match pty_system.openpty(PtySize {
@@ -58,7 +283,7 @@ async fn handle_socket(socket: WebSocket) {
     drop(pair.slave);
 
     // Keep master for read/write + resize
-    let mut master = pair.master;
+    let master = pair.master;
     let mut reader = match master.try_clone_reader() {
         Ok(r) => r, Err(e) => { eprintln!("clone reader: {e}"); let _=fs::remove_file(&sock_path); return; }
     };
@@ -68,7 +293,7 @@ async fn handle_socket(socket: WebSocket) {
     let writer = Arc::new(Mutex::new(writer));
     let master_arc = Arc::new(Mutex::new(master));
 
-    let (mut ws_tx, mut ws_rx) = socket.split();
+    let (ws_tx, mut ws_rx) = socket.split();
     let ws_tx_arc = Arc::new(Mutex::new(ws_tx));
 
     // PTY -> WS bytes via channel
@@ -180,7 +405,7 @@ async fn handle_socket(socket: WebSocket) {
                                     v.get("cols").and_then(|x| x.as_u64()),
                                     v.get("rows").and_then(|x| x.as_u64()),
                                 ) {
-                                    let mut m = master2.lock().await;
+                                    let m = master2.lock().await;
                                     let _ = m.resize(PtySize {
                                         rows: rows as u16, cols: cols as u16,
                                         pixel_width: 0, pixel_height: 0
@@ -205,6 +430,10 @@ async fn handle_socket(socket: WebSocket) {
     let _ = input_task.await;
     let _ = child.kill();
     let _ = fs::remove_file(&sock_path);
+    
+    // Clean up session
+    session_manager.remove_session(&session_id).await;
+    eprintln!("[{}] WebSocket disconnected, session cleaned up", session_id);
 }
 
 // Helpers

@@ -68,14 +68,66 @@
         display: block;
       }
 
+      /* Agent View Container */
+      #agentView {
+        display: flex;
+        flex-direction: column;
+      }
+      
       /* Timeline (Agent) */
       #timeline {
         display: flex;
         flex-direction: column;
         justify-content: flex-end;
-        height: 100%;
+        flex: 1;
         padding: 8px;
         gap: 8px;
+        overflow-y: auto;
+      }
+      
+      /* Intro screen */
+      #intro {
+        text-align: center;
+        padding: 20px;
+        opacity: 0.7;
+        margin-top: auto;
+      }
+      #intro pre {
+        font: 11px SF Mono, JetBrains Mono, Menlo, Consolas, monospace;
+        color: var(--accent);
+        margin: 20px 0;
+        line-height: 1.2;
+      }
+      #intro .version {
+        color: var(--muted);
+        font-size: 12px;
+        margin-top: 10px;
+      }
+      
+      /* Current directory indicator */
+      #currentDir {
+        position: sticky;
+        top: 0;
+        background: rgba(15, 17, 21, 0.95);
+        backdrop-filter: blur(10px);
+        padding: 8px 12px;
+        border-bottom: 1px solid var(--divider);
+        display: none;
+        align-items: center;
+        gap: 8px;
+        font: 12px SF Mono, JetBrains Mono, Menlo, Consolas, monospace;
+        z-index: 10;
+      }
+      #currentDir.show {
+        display: flex;
+      }
+      #currentDir .label {
+        color: var(--muted);
+        opacity: 0.7;
+      }
+      #currentDir .path {
+        color: var(--accent);
+        flex: 1;
       }
       .card {
         background: #0f1115;
@@ -211,19 +263,152 @@
         height: 0;
         width: 0;
       }
+
+      /* Auth Modal */
+      #authModal {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.8);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+        backdrop-filter: blur(4px);
+      }
+      #authModal.show {
+        display: flex;
+      }
+      .modal-content {
+        background: var(--bg);
+        border: 1px solid var(--divider);
+        border-radius: 16px;
+        padding: 30px;
+        max-width: 400px;
+        width: 90%;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+      }
+      .modal-content h2 {
+        margin: 0 0 10px 0;
+        font-size: 24px;
+      }
+      .modal-content p {
+        color: var(--muted);
+        margin: 0 0 20px 0;
+        line-height: 1.5;
+      }
+      .modal-content input {
+        width: 100%;
+        background: #1b1f2a;
+        color: var(--fg);
+        border: 1px solid var(--divider);
+        border-radius: 8px;
+        padding: 12px;
+        font-size: 14px;
+        font-family: SF Mono, monospace;
+        margin-bottom: 16px;
+        box-sizing: border-box;
+      }
+      .modal-content input:focus {
+        outline: none;
+        border-color: var(--accent);
+      }
+      .modal-content button {
+        width: 100%;
+        background: var(--accent);
+        color: white;
+        border: none;
+        border-radius: 8px;
+        padding: 12px;
+        font-size: 16px;
+        cursor: pointer;
+        font-weight: 500;
+      }
+      .modal-content button:hover {
+        opacity: 0.9;
+      }
+      .modal-content button:active {
+        opacity: 0.8;
+      }
+      .error-msg {
+        color: var(--err);
+        margin-bottom: 12px;
+        font-size: 14px;
+        display: none;
+      }
+      .error-msg.show {
+        display: block;
+      }
+
+      /* QR Button */
+      #qrBtn {
+        display: none;
+        background: #1b1f2a;
+        color: var(--fg);
+        border: 1px solid var(--divider);
+        padding: 6px 12px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 13px;
+      }
+      #qrBtn.show {
+        display: inline-block;
+      }
+      #qrBtn:hover {
+        border-color: var(--accent);
+      }
     </style>
   </head>
   <body>
+    <!-- Auth Modal -->
+    <div id="authModal">
+      <div class="modal-content">
+        <h2>🔒 Authentication Required</h2>
+        <p>This Bridge requires an authentication token to connect.</p>
+        <div class="error-msg" id="authError"></div>
+        <input
+          type="password"
+          id="tokenInput"
+          placeholder="Enter your token"
+          autocomplete="off"
+        />
+        <button id="authSubmit">Connect</button>
+      </div>
+    </div>
+
     <!-- Tabs -->
     <div id="tabs">
       <div class="tab active" data-tab="agent">Agent</div>
       <div class="tab" data-tab="live">Live Terminal</div>
+      <button id="qrBtn" title="Get QR Code for mobile">📱 QR Code</button>
     </div>
 
     <!-- Views -->
     <div id="views">
       <div id="agentView" class="view active">
-        <div id="timeline"></div>
+        <div id="currentDir">
+          <span class="label">📂</span>
+          <span class="path">~</span>
+        </div>
+        <div id="timeline">
+          <div id="intro">
+            <pre>
+     ✧･ﾟ: *✧･ﾟ:*    ██████╗ ██████╗ ██╗██████╗  ██████╗ ███████╗    *:･ﾟ✧*:･ﾟ✧
+    ･ﾟ✧    ･ﾟ✧     ██╔══██╗██╔══██╗██║██╔══██╗██╔════╝ ██╔════╝     ✧ﾟ･    ✧ﾟ･
+   ✧    ◯    ✧    ██████╔╝██████╔╝██║██║  ██║██║  ███╗█████╗      ✧    ◯    ✧
+  ･     ╱|╲     ･   ██╔══██╗██╔══██╗██║██║  ██║██║   ██║██╔══╝     ･     ╱|╲     ･
+ ✧    ╱ | ╲    ✧  ██████╔╝██║  ██║██║██████╔╝╚██████╔╝███████╗  ✧    ╱ | ╲    ✧
+･    ▔▔▔▔▔▔▔    ･ ╚═════╝ ╚═╝  ╚═╝╚═╝╚═════╝  ╚═════╝ ╚══════╝ ･    ▔▔▔▔▔▔▔    ･
+✧  ▞▀▀▀▀▀▀▀▚  ✧                                                  ✧  ▞▀▀▀▀▀▀▀▚  ✧
+   ▞▀▀▀▀▀▀▀▚                                                        ▞▀▀▀▀▀▀▀▚
+            </pre>
+            <div style="font-size: 16px; margin: 15px 0;">🌉 <strong>for Warp Terminal</strong></div>
+            <div class="version">Secure remote terminal access • v0.1.0</div>
+            <div class="version" style="margin-top: 20px; opacity: 0.6;">
+              Built with ✨ by <a href="https://github.com/witchcraftery" target="_blank" style="color: var(--accent); text-decoration: none;">Witchcraftery</a>
+            </div>
+            <div class="version" style="margin-top: 15px; opacity: 0.5;">Type a command below to get started</div>
+          </div>
+        </div>
       </div>
       <div id="liveView" class="view">
         <div id="liveWrap"><div id="term"></div></div>
@@ -264,6 +449,96 @@
     <script src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit/lib/xterm-addon-fit.min.js"></script>
     <script>
+      // --- Token Management --------------------------------------------------
+      let authToken = null;
+      
+      // Check for token in URL (QR code flow)
+      function getTokenFromURL() {
+        const params = new URLSearchParams(window.location.search);
+        return params.get('token');
+      }
+      
+      // Get token from sessionStorage
+      function getStoredToken() {
+        return sessionStorage.getItem('bridge_auth_token');
+      }
+      
+      // Store token in sessionStorage
+      function storeToken(token) {
+        sessionStorage.setItem('bridge_auth_token', token);
+        authToken = token;
+      }
+      
+      // Clear token
+      function clearToken() {
+        sessionStorage.removeItem('bridge_auth_token');
+        authToken = null;
+      }
+      
+      // Initialize token (from URL or storage)
+      function initializeToken() {
+        const urlToken = getTokenFromURL();
+        if (urlToken) {
+          // Token from QR code scan
+          storeToken(urlToken);
+          // Clean URL (remove token from address bar for security)
+          window.history.replaceState({}, document.title, window.location.pathname);
+          return urlToken;
+        }
+        
+        const stored = getStoredToken();
+        if (stored) {
+          authToken = stored;
+          return stored;
+        }
+        
+        return null;
+      }
+      
+      // Show/hide auth modal
+      function showAuthModal(errorMsg = '') {
+        const modal = document.getElementById('authModal');
+        const errorEl = document.getElementById('authError');
+        modal.classList.add('show');
+        if (errorMsg) {
+          errorEl.textContent = errorMsg;
+          errorEl.classList.add('show');
+        } else {
+          errorEl.classList.remove('show');
+        }
+        document.getElementById('tokenInput').focus();
+      }
+      
+      function hideAuthModal() {
+        document.getElementById('authModal').classList.remove('show');
+      }
+      
+      // Auth modal submit
+      document.getElementById('authSubmit').onclick = () => {
+        const input = document.getElementById('tokenInput');
+        const token = input.value.trim();
+        if (token) {
+          storeToken(token);
+          hideAuthModal();
+          connect(); // Attempt connection with new token
+        }
+      };
+      
+      // Allow Enter key in token input
+      document.getElementById('tokenInput').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          document.getElementById('authSubmit').click();
+        }
+      });
+      
+      // QR Code button
+      document.getElementById('qrBtn').onclick = () => {
+        window.open('/qr', '_blank');
+      };
+      
+      // Initialize token on page load
+      initializeToken();
+      
       // --- Helpers -----------------------------------------------------------
       function stripAnsiOsc(s) {
         s = s.replace(/\u001B\][^\u0007\u001B]*(?:\u0007|\u001B\\)/g, ""); // OSC
@@ -409,7 +684,20 @@
 
       // --- Timeline data / render -------------------------------------------
       const TL = document.getElementById("timeline");
+      const currentDirEl = document.getElementById("currentDir");
+      const currentDirPath = currentDirEl.querySelector(".path");
+      let lastKnownCwd = "~";
+      
       const blocks = new Map(); // id -> { meta, lines:[], tail:'', collapsed:true }
+      
+      function updateCurrentDir(cwd) {
+        if (cwd && cwd !== lastKnownCwd) {
+          lastKnownCwd = cwd;
+          currentDirPath.textContent = cwd;
+          currentDirEl.classList.add("show");
+        }
+      }
+      
       function scrollTimelineToBottom() {
         TL.scrollTop = TL.scrollHeight;
       }
@@ -489,17 +777,30 @@
       // --- WebSocket transport ----------------------------------------------
       let ws;
       let suspendTimeline = false; // ignore block_chunk while Live (alt-screen) is active
+      let reconnectAttempts = 0;
+      const MAX_RECONNECT_ATTEMPTS = 3;
+      
       function setStatus(s) {
         document.getElementById("status").textContent = s;
       }
+      
       function connect() {
         const proto = location.protocol === "https:" ? "wss" : "ws";
-        const url = `${proto}://${location.host}/bridge`;
+        let url = `${proto}://${location.host}/bridge`;
+        
+        // Append token if available
+        if (authToken) {
+          url += `?token=${encodeURIComponent(authToken)}`;
+          // Show QR button when authenticated
+          document.getElementById('qrBtn').classList.add('show');
+        }
+        
         setStatus("connecting");
         ws = new WebSocket(url);
         ws.binaryType = "arraybuffer";
         ws.onopen = () => {
           setStatus("connected");
+          reconnectAttempts = 0; // Reset on successful connection
           refit();
           term.focus();
         };
@@ -513,6 +814,15 @@
               const m = JSON.parse(ev.data);
               if (m.type === "block_event") {
                 if (m.event === "opened") {
+                  // Hide intro on first command
+                  const intro = document.getElementById("intro");
+                  if (intro) intro.style.display = "none";
+                  
+                  // Update current directory
+                  if (m.block.cwd) {
+                    updateCurrentDir(m.block.cwd);
+                  }
+                  
                   blocks.set(m.block.id, {
                     meta: m.block,
                     lines: [],
@@ -568,9 +878,40 @@
             }
           }
         };
-        ws.onclose = () => setStatus("disconnected");
+        ws.onerror = (err) => {
+          console.error('WebSocket error:', err);
+          setStatus("error");
+        };
+        
+        ws.onclose = (event) => {
+          setStatus("disconnected");
+          
+          // Check if it was an authentication failure (status 401 or 1008)
+          if (event.code === 1008 || event.code === 1002) {
+            // Authentication failed
+            clearToken();
+            showAuthModal('🔒 Authentication failed. Please enter a valid token.');
+            reconnectAttempts = 0; // Don't auto-reconnect on auth failure
+          } else if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+            // Connection lost, try to reconnect
+            reconnectAttempts++;
+            setStatus(`reconnecting (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
+            setTimeout(connect, 2000 * reconnectAttempts); // Exponential backoff
+          } else if (!authToken) {
+            // No token and can't connect - show auth modal
+            showAuthModal('🔒 This Bridge requires authentication. Please enter your token.');
+          }
+        };
       }
-      connect();
+      
+      // Initial connection attempt
+      if (authToken) {
+        connect();
+      } else {
+        // Check if server requires auth by attempting connection
+        // If it fails, we'll show the auth modal
+        connect();
+      }
 
       // PTY resize
       function sendResize() {
