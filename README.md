@@ -1,4 +1,8 @@
-# 🌉 Bridge for Warp Terminal
+
+
+# ![Bridge-For-Warp_beaming_122025](/Users/witchcraftery/GitHub/dev-tools/bridge-for-warp/Bridge-For-Warp_beaming_122025.png)
+
+# Bridge for Warp Terminal
 
 > A secure, browser-based remote gateway to your local Warp Terminal, enabling powerful terminal access from anywhere.
 
@@ -34,12 +38,23 @@ Bridge for Warp Terminal provides a seamless connection between your browser and
 - **📱 Responsive Design**: Optimized for desktop, tablet, and mobile devices with tested iPad support
 - **⌨️ Virtual Keyboard Support**: Touch-friendly controls for mobile devices
 
-### Security & Authentication (✨ NEW in v0.1.0)
-- **🔐 Token-Based Authentication**: Secure access with configurable authentication tokens
-- **📱 QR Code Authentication**: Scan QR code on mobile devices for instant, secure connection
-- **🔒 Session Management**: Automatic session tracking with UUID identifiers and configurable timeouts
-- **⏱️ Auto-Cleanup**: Background task removes expired sessions every 5 minutes
-- **🌐 VPN/Tailscale Ready**: Configure public URL for remote access over secure networks
+### Security & Authentication
+- **🔐 Token-Based Authentication**: Secure access with configurable authentication tokens (v0.1.0)
+- **📱 QR Code Authentication**: Scan QR code on mobile devices for instant, secure connection (v0.1.0)
+- **🔒 Session Management**: Automatic session tracking with UUID identifiers and configurable timeouts (v0.1.0)
+- **⏱️ Auto-Cleanup**: Background task removes expired sessions every 5 minutes (v0.1.0)
+- **🌐 VPN/Tailscale Ready**: Configure public URL for remote access over secure networks (v0.1.0)
+- **🛡️ IP Whitelisting**: Restrict access to specific IPs or CIDR ranges (✨ NEW in v0.2.0)
+- **👥 Multi-User Isolation**: Users only see and control their own sessions (✨ NEW in v0.2.0)
+- **👨‍💼 Admin Mode**: Optional shared session view for administrators (✨ NEW in v0.2.0)
+
+### Session Management (✨ NEW in v0.2.0)
+- **📊 Sessions Dashboard**: Real-time view of all active sessions with auto-refresh
+- **🔍 User Identification**: Sessions tied to authentication tokens via SHA256 hash
+- **⏱️ Idle Warnings**: Alert users 5 minutes before session expiration
+- **♻️ Keepalive**: One-click session extension when idle warning appears
+- **🗑️ Session Termination**: Terminate your own sessions from the UI
+- **🔐 Ownership Protection**: Users cannot access or terminate other users' sessions
 
 ### User Experience
 - **🌉 Beautiful UI**: Ethereal portal-themed intro screen with ASCII art
@@ -167,6 +182,17 @@ BRIDGE_AUTH_TOKEN=your-secure-token-here
 
 # Session timeout in seconds (default: 1800 = 30 minutes)
 BRIDGE_SESSION_TIMEOUT=1800
+
+# IP Whitelisting (NEW in v0.2.0)
+# Restrict access to specific IPs or CIDR ranges (comma-separated)
+# Examples: 192.168.1.0/24, 10.0.0.0/8, 172.16.0.1
+# Empty = allow all IPs
+BRIDGE_ALLOWED_IPS=
+
+# Multi-User Session Isolation (NEW in v0.2.0)
+# false = users only see their own sessions (default, recommended)
+# true = admin mode, users can see and terminate all sessions
+BRIDGE_SHARED_SESSIONS=false
 
 # Shell Configuration
 BRIDGE_SHELL=/bin/zsh  # or /bin/bash, /bin/fish
