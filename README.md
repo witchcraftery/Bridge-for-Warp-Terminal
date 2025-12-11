@@ -1,6 +1,6 @@
 
 
-# ![Bridge-For-Warp_beaming_122025](/Users/witchcraftery/GitHub/dev-tools/bridge-for-warp/Bridge-For-Warp_beaming_122025.png)
+# ![Bridge for Warp Terminal](./Bridge-For-Warp_beaming_122025.png)
 
 # Bridge for Warp Terminal
 
